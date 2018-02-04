@@ -9,6 +9,9 @@
 #include "Eigen-3.3/Eigen/QR"
 #include "json.hpp"
 #include "spline.h"
+#include <algorithm>
+
+#define MAX_VEL (49.5)
 
 using namespace std;
 
@@ -177,6 +180,333 @@ vector<double> getXY(double s, double d, const vector<double> &maps_s, const vec
 
 }
 
+int findindexbyID(int car_id, vector<vector<double>>& sensor_fusion)
+{
+    int index = -1;
+    for(int i = 0; i < sensor_fusion.size(); i++)
+    {
+        if(car_id == (int)sensor_fusion[i][0])
+        {
+            index = i;
+        }
+    }
+    
+    if(index == -1)
+    {
+        cout << "error! cannot find index by id." << endl;
+    }
+
+    return index;
+}
+
+struct DistanceCmp
+{
+    bool operator()(std::pair<int, double>& e1, std::pair<int, double>& e2) const
+    {
+        return (e1.second < e2.second);
+    }
+};
+
+vector<std::pair<int, double>> nearest_vehicle_sets(double car_s, double car_d, vector<vector<double>>& sensor_fusion)
+{
+    vector<std::pair<int, double>> nearest_cars;
+
+    for (int i = 0; i < sensor_fusion.size(); i++)
+    {
+        double v_s = sensor_fusion[i][5];
+        double v_d = sensor_fusion[i][6];
+        double dist = sqrt((car_s-v_s)*(car_s-v_s) + (car_d-v_d)*(car_d-v_d));
+        //double dist = abs(car_s - v_s) + abs(car_d - v_d);
+        
+        //debug
+        cout << i << "  sensor_fusion, id = " << sensor_fusion[i][0] << " distance = " << dist << " v_s: " << v_s << " v_d: " << v_d << endl;
+        
+        if(abs(v_s - car_s) > 90 || v_d < 0) //remove illegal value, only see s within 90m, and d>0
+        {
+            continue;
+        }          
+        else
+        {
+            //only push <50m car's id and distance into vector
+            nearest_cars.push_back(std::make_pair(sensor_fusion[i][0], dist)); 
+        }
+
+    }
+      
+    std::sort(nearest_cars.begin(), nearest_cars.end(), DistanceCmp()); //ascending order
+
+    for (int i = 0; i < nearest_cars.size(); i++)
+    {
+        cout << "--" << i << "  nearest_cars, id = " << nearest_cars[i].first << " distance = " << nearest_cars[i].second << endl;
+    }    
+    
+    return nearest_cars;
+}
+
+#define RIGHT (1)
+#define LEFT  (0)
+
+vector<std::pair<int, int>> check_side_has_car_or_not(double car_s, double car_d, vector<vector<double>>& sensor_fusion, vector<std::pair<int, double>>& nearest_cars, bool& hascarflag)
+{
+    //with car's id and position at left/right flag
+    vector<std::pair<int, int>> side_car_vec;
+
+    // check nearest car
+    for(int i = 0; i < nearest_cars.size(); i++)
+    {
+        // id & left/right flag
+        std::pair<int, int> car_side = std::make_pair(nearest_cars[i].first, -1);
+
+        int j = findindexbyID(car_side.first, sensor_fusion);
+
+        //for(int j = 0; j < sensor_fusion.size(); j++)
+        //{
+            //if((int)sensor_fusion[j][0] == car_side.first)
+            //{
+                double check_car_s = sensor_fusion[j][5]; // s in frenet
+                double check_car_d = sensor_fusion[j][6]; // d in frenet
+
+                //car in same lane
+                if(fabs(car_d - check_car_d) < 2) continue;
+
+                //in other lanes, d is 3-5m, s within 6m, 6m is a car's length gap //10m
+                if( (fabs(car_d - check_car_d) < 5 && fabs(car_d - check_car_d) > 3) &&
+                        (((check_car_s - car_s  < 30) &&  check_car_s >= car_s) ||    //check front
+                        (((car_s - check_car_s  < 20)) && car_s >= check_car_s)       //check behind
+                        )   //d < (4*lane+2+2) && d > 4*lane 
+                  )
+                {
+                    hascarflag = true;
+                    int car_location = -1;
+
+                    if( car_d > check_car_d)
+                    {
+                        car_side.second = LEFT; //other car is at left side
+                    }
+                    else if( car_d < check_car_d)
+                    {
+                        car_side.second = RIGHT;  //other car is at right side
+                    }
+                    
+                    side_car_vec.push_back(car_side); //already sort
+                }
+            //}
+        //}
+    }
+
+    for(int i = 0; i < side_car_vec.size(); i++)
+    {
+        //debug
+        string side_car_at ="";
+        if(side_car_vec[i].second == LEFT)
+        {
+            side_car_at = "left";
+        }
+        else
+        {
+            side_car_at = "right";
+        }
+        
+        cout << "-: check_side: nearest side car id = " << side_car_vec[i].first <<" at: " << side_car_at << endl;
+                    
+    }
+    
+    return side_car_vec;
+
+}
+bool checklanecar(int check_lane, double car_s, vector<vector<double>>& sensor_fusion)
+{
+    bool has_car = false;
+    
+    for(int i = 0; i < sensor_fusion.size(); i++)
+    {
+        double v_s = sensor_fusion[i][5];
+        double v_d = sensor_fusion[i][6];
+        
+        if(v_d < 0) continue;  //remove illegal car
+        
+        if(v_d < 4*check_lane+4 && v_d > 4*check_lane)
+        {
+            if(v_s - car_s < 60)
+            {
+                has_car = true;
+            }
+            else
+            {
+                has_car = false;
+            }
+              
+        }
+    }
+
+    return has_car;
+}
+
+int lane_change_no_side_car(int lane, double car_s, vector<vector<double>>& sensor_fusion)
+{
+
+    int to_lane = lane;
+
+    //cout << "*** lane_change, side_cars_vec.size() = " << side_cars_vec.size() << endl;
+    
+    //FSM
+    switch (to_lane){
+    case 0:
+            to_lane += 1;   // (lane+1)%3;
+            break;
+    case 1:{
+            //change to left or right
+            //if in 60m, lane 0 has car, lane 2 no car, to lane 2,
+            //if in 60m, lane 2 has car, lane 0 no car, to lane 0,
+            //else default left change;
+            bool lane0_hascar = checklanecar(0, car_s, sensor_fusion);
+            bool lane2_hascar = checklanecar(2, car_s, sensor_fusion);
+            
+            if(lane0_hascar == true && lane2_hascar == false)
+            {
+                to_lane += 1;
+            }
+            else if(lane0_hascar == false && lane2_hascar == true)
+            {
+                to_lane -= 1;
+            }
+            else  //default
+            {
+               to_lane -= 1; //left change
+            }
+            
+            break;
+    }
+    case 2:
+            to_lane -= 1;
+            break;
+    default:
+            break;
+    }
+    
+    return to_lane;
+}
+
+int lane_change_has_side_car(int lane, double car_s, vector<std::pair<int, int>> side_cars_vec, vector<vector<double>>& sensor_fusion)
+{
+    int to_lane = lane;
+
+///////////////////////////////////
+  int v_id =  side_cars_vec[0].first;
+  int index = findindexbyID(v_id, sensor_fusion);
+  double v_s = sensor_fusion[index][5];
+  double v_d = sensor_fusion[index][6];
+  
+  int v1_id = 0;
+  int index1 = 0;
+  double v1_s = 0.0;
+  double v1_d = 0.0;
+  
+  if(side_cars_vec.size() > 1)
+  {
+    v1_id =  side_cars_vec[1].first;
+    index1 = findindexbyID(v1_id, sensor_fusion);
+    v1_s = sensor_fusion[index1][5];
+    v1_d = sensor_fusion[index1][6];
+  }
+
+    //FSM
+    switch (to_lane){
+    case 0: {  //only care about nearest car of lane 1
+            if((v_s - car_s > 20) || (car_s - v_s > 20))
+            {
+                to_lane += 1;  // (lane+1)%3;
+            }  
+            break;
+    }
+    case 1:{
+            //change to left or right
+            //if side_cars_vec.size == 1, means only 1 car, only check 1 car.
+            //if side_cars_vec.size > 1, means many cars, only check 2 car.
+            if(side_cars_vec.size() == 1)
+            {
+              if(side_cars_vec[0].second == LEFT)
+              {
+                  to_lane += 1;
+              }
+              else if(side_cars_vec[0].second == RIGHT)
+              {
+                  to_lane -= 1;
+              }
+            }
+            
+            if(side_cars_vec.size() > 1)
+            {
+                if(side_cars_vec[0].second == LEFT && side_cars_vec[1].second == LEFT)
+                {
+                  to_lane += 1;
+                }
+                else if(side_cars_vec[0].second == RIGHT && side_cars_vec[1].second == RIGHT)
+                {
+                    to_lane -= 1;
+                }
+                else if( (side_cars_vec[0].second == LEFT && side_cars_vec[1].second == RIGHT)
+                  || ( side_cars_vec[0].second == RIGHT && side_cars_vec[1].second == LEFT)
+                )
+                {
+                    if(v_s > car_s && v1_s > car_s) //only consider front car
+                    {
+                      double ds0 = v_s - car_s;
+                      double ds1 = v1_s - car_s;
+                      
+                      if(ds0 < ds1) //v1_s is farer than v_s, change lane to v1_s side
+                      {
+                         if(ds1>20)
+                         {
+                            if(side_cars_vec[1].second == RIGHT)
+                            {
+                              to_lane += 1;
+                            }
+                            else if(side_cars_vec[1].second == LEFT)
+                            {
+                              to_lane -= 1;
+                            }
+                         }
+                          
+                      }
+                      else if(ds0 > ds1)
+                      {
+                         if(ds0>20)
+                         {
+                            if(side_cars_vec[0].second == RIGHT)
+                            {
+                              to_lane += 1;
+                            }
+                            else if(side_cars_vec[0].second == LEFT)
+                            {
+                              to_lane -= 1;
+                            }
+                         }
+                      }
+                      
+                      //other case is lane keep
+                    }
+
+                }
+              
+            }
+            
+            break;
+    }
+    case 2:{ //only care about nearest car of lane 1
+            if( (v_s - car_s > 20) || (car_s - v_s > 20))
+            {
+                to_lane -= 1;
+            }
+            break;
+    }
+    default:
+            break;
+    }
+    
+    return to_lane;
+}
+
 int main()
 {
     uWS::Hub h;
@@ -215,7 +545,7 @@ int main()
         map_waypoints_dx.push_back(d_x);
         map_waypoints_dy.push_back(d_y);
     }
-    
+
     //start lane
     int lane = 1;
     // reference velocity
@@ -262,62 +592,205 @@ int main()
                     // Sensor Fusion Data, a list of all other cars on the same side of the road.
                     vector<vector<double>> sensor_fusion = j[1]["sensor_fusion"];
                     int prev_path_size = previous_path_x.size();
-                    
+
                     if(previous_path_x.size() > 0)
                     {
                         car_s = end_path_s;
+                        car_d = end_path_d;
                     }
 
                     bool too_close = false;
-                    for(int i = 0; i < sensor_fusion.size(); i++)
+                    bool too_slow = false;
+
+                    //find legal nearest cars list, with cars' id and distance, within 90m and d>0
+                    vector<std::pair<int, double>> nearest_cars = nearest_vehicle_sets(car_s, car_d, sensor_fusion);
+
+                    //from nearest car and then far car.
+                    for(int i = 0; i < nearest_cars.size(); i++)
                     {
-                        float d = sensor_fusion[i][6]; // d in frenet
-                        if( d < (4*lane+2+2) && d > 4*lane) //current lane
+                        //cars' id
+                        int car_id = nearest_cars[i].first;
+
+                        //this is closest car's index
+                        int index = findindexbyID(car_id, sensor_fusion);
+                        //float d = sensor_fusion[index][6]; // d in frenet
+
+                        //check current lane's all car's status, sensor_fusion: [id, x, y, vx, vy, s, d]
+                        double vx = sensor_fusion[index][3];
+                        double vy = sensor_fusion[index][4];
+                        double check_speed = sqrt(vx*vx + vy*vy);
+                        double check_car_s = sensor_fusion[index][5]; // s in frenet
+                        double check_car_d = sensor_fusion[index][6]; // d in frenet
+                        check_car_s += previous_path_x.size() * 0.02 * check_speed;
+
+                        //when nearest car in same d lane
+                        if( check_car_d < (4*lane+2+2) && check_car_d > 4*lane )
                         {
-                            //check current lane's all car's status
-                            double vx = sensor_fusion[i][3];
-                            double vy = sensor_fusion[i][4];
-                            double check_speed = sqrt(vx*vx + vy*vy);
-                            double check_car_s = sensor_fusion[i][5]; // s in frenet
-                            double check_car_d = sensor_fusion[i][6]; // d in frenet
-                            check_car_s += previous_path_x.size() * 0.02 * check_speed;
-                            
-                            if(check_car_s > car_s && (check_car_s-car_s <= 30))
+                            // check front car, <= 30m
+                            if(check_car_s > car_s && (check_car_s - car_s <= 30) && check_speed < MAX_VEL)
                             {
                                 //ref_vel = 39.5;
                                 too_close = true;
-                                ref_vel -= 0.224; //0.224;
-                                
-                                //lane change logic, FSM, cost function
-                                if( ( fabs(check_car_d - car_d)>3.5 && fabs(check_car_d - car_d)<7 && fabs(check_car_s - car_s) > 5.0)) // >4m change lane
-                                {
+                                //ref_vel -= 0.224;  // reduce velocity
 
-                                    if(lane > 0)
-                                    {
-                                        lane -= 1;
-                                    }
-                                    else if(lane == 0)
-                                    {
-                                        lane += 1;
-                                    }
-                                    //break;
+                                //prepare to change lane
+                                //check side-way within 10m have car or not, if yes, stop pass, and reduce velocity
+                                //if no, pass car.
+                                bool has_car_flag = false;
+                                //check sideway has car or not, return with side car's id and position relative to ego car. in 30m
+                                vector<std::pair<int, int>> side_cars_vec = check_side_has_car_or_not(car_s, car_d, sensor_fusion, nearest_cars,  has_car_flag);
+                                
+                                //debug
+                                for(int i = 0; i<side_cars_vec.size(); i++)
+                                {
+                                    string position = (side_cars_vec[i].second == 0)?"left":"right";
+                                    cout << "00: " << "side_cars_vec, id= " << side_cars_vec[i].first << " position at: " << position << endl;
                                 }
+
+                                //double to_lane = 0;
+                                if (has_car_flag == true)
+                                {
+                                    lane = lane_change_has_side_car(lane, car_s, side_cars_vec, sensor_fusion);
+                                    break; //reduce velocity
+                                }
+                                else //in safe passing distance, but s distance < 30m
+                                {
+                                    too_close = false;  // reset flag
+                                    
+                                    //if(check_speed < MAX_VEL)
+                                    //{
+                                        //look to 60m forward
+                                        lane = lane_change_no_side_car(lane, car_s, sensor_fusion);
+                                    //}
+
+
+                                    break;
+                                }
+
                             }
-                            
+
+                            //if s distance > 30m, lane keep.
+
+                            // check behind and side car, in 6m,
+                            if((check_car_s < car_s) && (car_s - check_car_s <= 20))
+                            {
+                                //speed up
+                                too_slow = true;
+                                break;
+                            }
                         }
-                        
-                      
+                        else   //different d lane, adjacent lane d
+                        {
+                            //if s > 30m, and not in same d lane
+                            /*if(check_car_s > car_s && (check_car_s - car_s > 30) )
+                            {
+                                //lane keep
+                                continue;
+                            }
+                            else if(check_car_s > car_s && (check_car_s - car_s < 30) )
+                            {
+                                //don't change lane to check_car_s's lane
+                                int check_lane = //check_car_d;
+                                
+                                continue;
+                            }         
+                            
+                            
+                            
+                            bool has_car_flag = false;
+                            vector<std::pair<int, int>> side_cars_vec = check_side_has_car_or_not(car_s, car_d, sensor_fusion, nearest_cars,  has_car_flag); */
+                            //lane keep
+
+
+                            //if(abs(car_d - check_car_d) < 5.5 && abs(car_d - check_car_d) > 3.5)
+                            //{
+                                //if( abs( check_car_s - car_s ) < 10 )
+                                //{
+                                 //   lane_change();
+                                //}
+                            //}
+                            //else
+                            //{
+                                continue;
+                            //}
+
+                            //check s, if s  > 30m, pass car
+                            /*if(check_car_s > car_s )
+                            {
+                                if(check_car_s - car_s >= 30))
+                                {
+                                    // pass car
+                                }
+
+                            }
+                            else if(check_car_s <= car_s && (car_s - check_car_s <= 5))
+                            {
+                                too_slow = true;
+                                break;
+                            }*/
+                        }
+
+
+#if 0
+                        //ref_vel -= 0.224; //0.224;
+
+
+                        //check same d lane front and behind's car
+                        vector<double> nearest_car = nearest_vehicle_sets(car_s, car_d, sensor_fusion);
+                        //lane change logic, FSM, cost function
+
+                        if(car_d )
+                        {
+
+                        }
+
+
+                        if( ( fabs(check_car_d - car_d)>3.5 && fabs(check_car_d - car_d)<7 && fabs(check_car_s - car_s) > 5.0)) // >4m change lane
+                        {
+
+                            if(lane > 0)
+                            {
+                                lane -= 1;
+                            }
+                            else if(lane == 0)
+                            {
+                                lane += 1;
+                            }
+                            //break;
+                        }
+#endif
                     }
-                    
+
+
+
+
+
+
                     if(too_close == true)
                     {
                         ref_vel -= 0.224; //0.224;
                     }
-                    else if(ref_vel < 49.7)
+                    else if(ref_vel < MAX_VEL)
                     {
                         ref_vel += 0.224;//0.224;
                     }
-                    
+                    else if(ref_vel - MAX_VEL <= 0.224) // to avoid velocity vibrate
+                    {
+                        ref_vel = MAX_VEL;
+                    }
+                    else if(ref_vel >= MAX_VEL)
+                    {
+                        ref_vel -= 0.224;
+                    }
+                    else if(too_slow == true)
+                    {
+                        if(ref_vel - 0.224 < MAX_VEL)
+                        {
+                            ref_vel += 0.224;//0.224;
+                        }
+
+                    }
+
                     cout << "car_x:  " << car_x << "\t car_y:  " << car_y << endl;
                     cout << "car_s:  " << car_s << "\t car_d:  " << car_d << endl;
                     cout << "car_yaw:  " << car_yaw << "\t car_speed:  " << car_speed << endl;
@@ -326,10 +799,10 @@ int main()
                     cout << "sensor_fusion size is:  " << sensor_fusion.size() << endl;
                     //cout << "sensor_fusion is:  " << sensor_fusion << endl;
                     cout << endl;
-                    
+
                     vector<double> ptsx;
                     vector<double> ptsy;
-                    
+
                     //referenct for starting points
                     double ref_x = car_x;
                     double ref_y = car_y;
@@ -340,10 +813,10 @@ int main()
                         // construct two points to make path tangent to car
                         double prev_car_x = car_x - 1 * cos(car_yaw);
                         double prev_car_y = car_y - 1 * sin(car_yaw);
-                        
+
                         ptsx.push_back(prev_car_x);
                         ptsx.push_back(car_x);
-                        
+
                         ptsy.push_back(prev_car_y);
                         ptsy.push_back(car_y);
 
@@ -353,31 +826,31 @@ int main()
                         // use previous path end points to make path
                         ref_x = previous_path_x[previous_path_x.size()-1];
                         ref_y = previous_path_y[previous_path_x.size()-1];
-                        
+
                         double prev_path_x2 = previous_path_x[previous_path_x.size()-2];
                         double prev_path_y2 = previous_path_y[previous_path_x.size()-2];
-                        
+
                         ref_yaw = atan2(ref_y-prev_path_y2, ref_x-prev_path_x2);
-                        
+
                         ptsx.push_back(prev_path_x2);
                         ptsx.push_back(ref_x);
                         ptsy.push_back(prev_path_y2);
                         ptsy.push_back(ref_y);
-                        
+
                     }
-                    
+
                     vector<double> next_wp0 = getXY(car_s+30, 4*lane+2, map_waypoints_s, map_waypoints_x, map_waypoints_y);
                     vector<double> next_wp1 = getXY(car_s+60, 4*lane+2, map_waypoints_s, map_waypoints_x, map_waypoints_y);
                     vector<double> next_wp2 = getXY(car_s+90, 4*lane+2, map_waypoints_s, map_waypoints_x, map_waypoints_y);
-                    
+
                     ptsx.push_back(next_wp0[0]);
                     ptsx.push_back(next_wp1[0]);
                     ptsx.push_back(next_wp2[0]);
- 
+
                     ptsy.push_back(next_wp0[1]);
                     ptsy.push_back(next_wp1[1]);
-                    ptsy.push_back(next_wp2[1]); 
-                    
+                    ptsy.push_back(next_wp2[1]);
+
                     //convert waypoints from map coordinate to car coordinate to make math simple
                     for(int i = 0; i < ptsx.size(); i++)
                     {
@@ -386,15 +859,15 @@ int main()
                         ptsx[i] = shift_x * cos(ref_yaw) + shift_y * sin(ref_yaw);
                         ptsy[i] = shift_x * (-sin(ref_yaw)) + shift_y * cos(ref_yaw);
                     }
-                    
+
                     //cout << "car_shift_x:  " << ptsx << endl;
                     //cout << "car_shift_y:  " << ptsy << endl;
                     //cout << endl;
-                    
+
                     // use spline to fit car points
                     tk::spline stk;
-                    stk.set_points(ptsx, ptsy);                    
-                    
+                    stk.set_points(ptsx, ptsy);
+
                     vector<double> next_x_vals;
                     vector<double> next_y_vals;
 
@@ -404,38 +877,38 @@ int main()
                         next_x_vals.push_back(previous_path_x[i]);
                         next_y_vals.push_back(previous_path_y[i]);
                     }
-                    
+
                     //calculate spline x, y, d and number of points.
                     double target_x = 30.0;
                     double target_y = stk(target_x);
                     double target_dist = sqrt(target_x*target_x + target_y*target_y);
-                                     
+
                     double x_add_on = 0;
-                    double num_n = target_dist / (0.02 * ref_vel * 0.447); //mph to m/s 1/2.24 or 0.447
-                    
+                    double num_n = target_dist / (0.02 * ref_vel * 0.447); //mph to m/s : 1/2.24 or 0.447
+
                     //fill with the rest of our path planner after filling with previous points, always output 50 points
                     for(int i = 0; i < 50 - previous_path_x.size(); i++)
                     {
-                        
+
                         double x_point = x_add_on + target_x/num_n;
                         double y_point = stk(x_point);
-                        
+
                         x_add_on = x_point;
                         double x_ref = x_point;
                         double y_ref = y_point;
-                        
+
                         //rotate back to map coordinate.
                         x_point = x_ref * cos(ref_yaw) - y_ref * sin(ref_yaw);
                         y_point = x_ref * sin(ref_yaw) + y_ref * cos(ref_yaw);
-                        
+
                         x_point += ref_x;
                         y_point += ref_y;
-                        
+
                         next_x_vals.push_back(x_point);
                         next_y_vals.push_back(y_point);
-                        
+
                     }
-                    
+
                     json msgJson;
                     // TODO: define a path made up of (x,y) points that the car will visit sequentially every .02 seconds
                     msgJson["next_x"] = next_x_vals;
