@@ -223,8 +223,8 @@ vector<std::pair<int, double>> nearest_vehicle_sets(double car_s, double car_d, 
         double dist2 = abs(car_s-v_s) + abs(car_d-v_d);
         double dist = (dist1 + dist2)/2.0   //cost function, two heuristic function combined
 
-        //debug
-        cout << i << "  sensor_fusion, id = " << sensor_fusion[i][0] << " distance = " << dist << " v_s: " << v_s << " v_d: " << v_d << endl;
+                      //debug
+                      cout << i << "  sensor_fusion, id = " << sensor_fusion[i][0] << " distance = " << dist << " v_s: " << v_s << " v_d: " << v_d << endl;
 
         if((v_s - car_s > 60) || (car_s - v_s > 40) || (v_d < 0)) //remove illegal value, only see s within 60m head or 40m backwards, and d>0
         {
@@ -548,10 +548,10 @@ int lane_change_has_side_car(int lane, double car_s, vector<std::pair<int, int>>
 
     cout << "*** lane_change_has_side_car, lane = " << lane << " to lane = " << to_lane << endl;
 
-         return to_lane;
-            }
+    return to_lane;
+}
 
-            int main()
+int main()
 {
     uWS::Hub h;
 
