@@ -12,10 +12,12 @@
 #include <algorithm>
 
 #define MAX_VEL (49.7)
+#define MIN_VEL (32)
+#define REF_VEL (0.2)  //0.224
 #define LEFT  (0)
 #define RIGHT (1)
 #define FRONT_CONSTRAINT (25)
-#define BACK_CONSTRAINT (20)
+#define BACK_CONSTRAINT (12)
 
 using namespace std;
 
@@ -217,17 +219,17 @@ vector<std::pair<int, double>> get_nearest_car_list(double car_s, double car_d, 
 
     for (int i = 0; i < sensor_fusion.size(); i++)
     {
-		double vx = sensor_fusion[i][3];
+        double vx = sensor_fusion[i][3];
         double vy = sensor_fusion[i][4];
-        double check_speed = sqrt(vx*vx + vy*vy);  
+        double check_speed = sqrt(vx*vx + vy*vy);
         double v_s = sensor_fusion[i][5];
         double v_d = sensor_fusion[i][6];
-		
-		v_s += prev_size * 0.02 * check_speed;
-				
+
+        v_s += prev_size * 0.02 * check_speed;
+
         double dist1 = sqrt((car_s-v_s)*(car_s-v_s) + (car_d-v_d)*(car_d-v_d));
         double dist2 = abs(car_s-v_s) + abs(car_d-v_d);
-        double dist = (dist1 + dist2)/2.0   //cost function, two heuristic function combined
+        double dist = (dist1 + dist2)/2.0;   //cost function, two heuristic function combined
 
 
         //debug
@@ -278,15 +280,15 @@ vector<std::pair<int, int>> check_side_has_car_or_not(double car_s, double car_d
         std::pair<int, int> car_side = std::make_pair(nearest_cars[i].first, -1);
 
         int j = findindexbyID(car_side.first, sensor_fusion);
-		
-		double vx = sensor_fusion[j][3];
-		double vy = sensor_fusion[j][4];
-        double check_speed = sqrt(vx*vx + vy*vy);  
+
+        double vx = sensor_fusion[j][3];
+        double vy = sensor_fusion[j][4];
+        double check_speed = sqrt(vx*vx + vy*vy);
         double check_car_s = sensor_fusion[j][5]; // s in frenet
         double check_car_d = sensor_fusion[j][6]; // d in frenet
 
-		check_car_s += prev_size * 0.02 * check_speed;
-		
+        check_car_s += prev_size * 0.02 * check_speed;
+
         //if car in same lane, continue
         if(check_car_d < 4*lane+4 && check_car_d > 4*lane)
         {
@@ -326,14 +328,14 @@ bool checklanecar(int check_lane, double car_s, vector<vector<double>>& sensor_f
 
     for(int i = 0; i < sensor_fusion.size(); i++)
     {
-		double vx = sensor_fusion[i][3];
-		double vy = sensor_fusion[i][4];
-        double check_speed = sqrt(vx*vx + vy*vy);  
+        double vx = sensor_fusion[i][3];
+        double vy = sensor_fusion[i][4];
+        double check_speed = sqrt(vx*vx + vy*vy);
         double v_s = sensor_fusion[i][5];
         double v_d = sensor_fusion[i][6];
 
-		v_s += prev_size * 0.02 * check_speed;
-		
+        v_s += prev_size * 0.02 * check_speed;
+
         if((v_s - car_s > 60) || (car_s - v_s > 40) || (v_d < 0)) //remove illegal value, only see s within 90m head or 40m backwards, and d>0
         {
             continue;
@@ -351,7 +353,7 @@ bool checklanecar(int check_lane, double car_s, vector<vector<double>>& sensor_f
     return has_car;
 }
 
-int lane_change_no_side_car(int lane, double car_s, vector<vector<double>>& sensor_fusion)
+int lane_change_no_side_car(int lane, double car_s, vector<vector<double>>& sensor_fusion, int prev_size)
 {
 
     int to_lane = lane;
@@ -370,8 +372,8 @@ int lane_change_no_side_car(int lane, double car_s, vector<vector<double>>& sens
         //if in 60m, lane 0 has car, lane 2 no car, to lane 2,
         //if in 60m, lane 2 has car, lane 0 no car, to lane 0,
         //else default left change;
-        bool lane0_hascar = checklanecar(0, car_s, sensor_fusion);
-        bool lane2_hascar = checklanecar(2, car_s, sensor_fusion);
+        bool lane0_hascar = checklanecar(0, car_s, sensor_fusion, prev_size);
+        bool lane2_hascar = checklanecar(2, car_s, sensor_fusion, prev_size);
 
         if(lane0_hascar == true && lane2_hascar == false)
         {
@@ -417,15 +419,15 @@ int lane_change_has_side_car(int lane, double car_s, vector<std::pair<int, int>>
         {
             int v_id =  side_cars_vec[i].first;
             int index = findindexbyID(v_id, sensor_fusion);
-			
-			double vx = sensor_fusion[index][3];
-			double vy = sensor_fusion[iindex][4];
-			double check_speed = sqrt(vx*vx + vy*vy);  
-		
+
+            double vx = sensor_fusion[index][3];
+            double vy = sensor_fusion[index][4];
+            double check_speed = sqrt(vx*vx + vy*vy);
+
             double v_s = sensor_fusion[index][5];
             double v_d = sensor_fusion[index][6];
-			
-			v_s += prev_size * 0.02 * check_speed;
+
+            v_s += prev_size * 0.02 * check_speed;
 
             if( ((v_s > car_s) && (v_s - car_s > FRONT_CONSTRAINT))  //front
                     || ((v_s < car_s) && (car_s - v_s > BACK_CONSTRAINT)) //back
@@ -456,16 +458,16 @@ int lane_change_has_side_car(int lane, double car_s, vector<std::pair<int, int>>
         {
             int v_id =  side_cars_vec[0].first;
             int index = findindexbyID(v_id, sensor_fusion);
-			
-			double vx = sensor_fusion[index][3];
-			double vy = sensor_fusion[iindex][4];
-			double check_speed = sqrt(vx*vx + vy*vy);  
-			
+
+            double vx = sensor_fusion[index][3];
+            double vy = sensor_fusion[index][4];
+            double check_speed = sqrt(vx*vx + vy*vy);
+
             double v_s = sensor_fusion[index][5];
             double v_d = sensor_fusion[index][6];
 
-			v_s += prev_size * 0.02 * check_speed;
-			
+            v_s += prev_size * 0.02 * check_speed;
+
             if(side_cars_vec[0].second == LEFT)
             {
                 to_lane = 2; //change lane to right
@@ -507,15 +509,15 @@ int lane_change_has_side_car(int lane, double car_s, vector<std::pair<int, int>>
                     {
                         int v_id =  side_cars_vec[i].first;
                         int index = findindexbyID(v_id, sensor_fusion);
-						double vx = sensor_fusion[index][3];
-						double vy = sensor_fusion[iindex][4];
-						double check_speed = sqrt(vx*vx + vy*vy);  
-			
-                        double v_s = sensor_fusion[index][5];
-						
-						v_s += prev_size * 0.02 * check_speed;
+                        double vx = sensor_fusion[index][3];
+                        double vy = sensor_fusion[index][4];
+                        double check_speed = sqrt(vx*vx + vy*vy);
 
-                        if ((v_s > car_s) && (v_s - car_s > FRONT_CONSTRAINT))  //front
+                        double v_s = sensor_fusion[index][5];
+
+                        v_s += prev_size * 0.02 * check_speed;
+
+                        if (((v_s > car_s) && (v_s - car_s > FRONT_CONSTRAINT))  //front
                             || ((v_s < car_s) && (car_s - v_s > BACK_CONSTRAINT)) //back
                             )
                         {
@@ -537,13 +539,13 @@ int lane_change_has_side_car(int lane, double car_s, vector<std::pair<int, int>>
                     {
                         int v_id =  side_cars_vec[i].first;
                         int index = findindexbyID(v_id, sensor_fusion);
-						double vx = sensor_fusion[index][3];
-						double vy = sensor_fusion[iindex][4];
-						double check_speed = sqrt(vx*vx + vy*vy);  
+                        double vx = sensor_fusion[index][3];
+                        double vy = sensor_fusion[index][4];
+                        double check_speed = sqrt(vx*vx + vy*vy);
                         double v_s = sensor_fusion[index][5];
-						v_s += prev_size * 0.02 * check_speed;
+                        v_s += prev_size * 0.02 * check_speed;
 
-                        if ((v_s > car_s) && (v_s - car_s > FRONT_CONSTRAINT))  //front
+                        if (((v_s > car_s) && (v_s - car_s > FRONT_CONSTRAINT))  //front
                             || ((v_s < car_s) && (car_s - v_s > BACK_CONSTRAINT)) //back
                             )
                         {
@@ -567,13 +569,13 @@ int lane_change_has_side_car(int lane, double car_s, vector<std::pair<int, int>>
         {
             int v_id =  side_cars_vec[i].first;
             int index = findindexbyID(v_id, sensor_fusion);
-			double vx = sensor_fusion[index][3];
-			double vy = sensor_fusion[iindex][4];
-			double check_speed = sqrt(vx*vx + vy*vy);  
-			double v_s = sensor_fusion[index][5];
+            double vx = sensor_fusion[index][3];
+            double vy = sensor_fusion[index][4];
+            double check_speed = sqrt(vx*vx + vy*vy);
+            double v_s = sensor_fusion[index][5];
             double v_d = sensor_fusion[index][6];
-			
-			v_s += prev_size * 0.02 * check_speed;
+
+            v_s += prev_size * 0.02 * check_speed;
 
             if( ((v_s > car_s) && (v_s - car_s > FRONT_CONSTRAINT))  //front
                     || ((v_s < car_s) && (car_s - v_s > BACK_CONSTRAINT)) //back
@@ -691,6 +693,7 @@ int main()
 
                     bool too_close = false;
                     bool too_slow = false;
+                    double front_car_vel = MIN_VEL;
 
                     //find legal nearest cars list, with cars' id and distance, within 60m front and 40 backwards, and d>0
                     vector<std::pair<int, double>> nearest_cars = get_nearest_car_list(car_s, car_d, sensor_fusion, prev_size);
@@ -712,6 +715,7 @@ int main()
                         double check_car_s = sensor_fusion[index][5]; // s in frenet
                         double check_car_d = sensor_fusion[index][6]; // d in frenet
                         check_car_s += previous_path_x.size() * 0.02 * check_speed; //0.02s
+                        front_car_vel = check_speed;
 
                         //when nearest car in same d lane
                         if( check_car_d < (4*lane+2+2) && check_car_d > 4*lane )
@@ -750,7 +754,7 @@ int main()
                                 }
 
                             }
-                            else
+                            else //if((check_car_s > car_s) && (check_car_s - car_s > 30))
                             {
                                 too_close = false; //accelerate the velocity promote rate
                             }
@@ -775,25 +779,28 @@ int main()
 
                     if(too_close == true)
                     {
-                        ref_vel -= 0.224; //0.224;
+                        if(ref_vel > MIN_VEL)
+                        {
+                            ref_vel -= REF_VEL; //0.224;
+                        }
                     }
                     else if(ref_vel < MAX_VEL)
                     {
-                        ref_vel += 0.224;//0.224;
+                        ref_vel += REF_VEL;//0.224;
                     }
-                    else if(ref_vel - MAX_VEL <= 0.224) // to avoid velocity vibrate
-                    {
-                        ref_vel = MAX_VEL;
-                    }
+                    //else if(ref_vel - MAX_VEL <= 0.224) // to avoid velocity vibrate
+                    //{
+                    //    ref_vel = MAX_VEL;
+                    //}
                     else if(ref_vel >= MAX_VEL)
                     {
-                        ref_vel -= 0.224;
+                        ref_vel -= REF_VEL; //0.224;
                     }
                     else if(too_slow == true)
                     {
                         if(ref_vel < MAX_VEL)
                         {
-                            ref_vel += 0.224;//0.224;
+                            ref_vel += REF_VEL;//0.224;
                         }
                     }
 
@@ -878,7 +885,7 @@ int main()
                         next_x_vals.push_back(previous_path_x[i]);
                         next_y_vals.push_back(previous_path_y[i]);
                     }
- 
+
                     //calculate spline x, y, d and number of points.
                     double target_x = 30.0;
                     double target_y = stk(target_x);
