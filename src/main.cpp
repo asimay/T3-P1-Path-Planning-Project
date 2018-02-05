@@ -211,20 +211,27 @@ struct DistanceCmp
     }
 };
 
-vector<std::pair<int, double>> nearest_vehicle_sets(double car_s, double car_d, vector<vector<double>>& sensor_fusion)
+vector<std::pair<int, double>> get_nearest_car_list(double car_s, double car_d, vector<vector<double>>& sensor_fusion, int prev_size)
 {
     vector<std::pair<int, double>> nearest_cars;
 
     for (int i = 0; i < sensor_fusion.size(); i++)
     {
+		double vx = sensor_fusion[i][3];
+        double vy = sensor_fusion[i][4];
+        double check_speed = sqrt(vx*vx + vy*vy);  
         double v_s = sensor_fusion[i][5];
         double v_d = sensor_fusion[i][6];
+		
+		v_s += prev_size * 0.02 * check_speed;
+				
         double dist1 = sqrt((car_s-v_s)*(car_s-v_s) + (car_d-v_d)*(car_d-v_d));
         double dist2 = abs(car_s-v_s) + abs(car_d-v_d);
         double dist = (dist1 + dist2)/2.0   //cost function, two heuristic function combined
 
-                      //debug
-                      cout << i << "  sensor_fusion, id = " << sensor_fusion[i][0] << " distance = " << dist << " v_s: " << v_s << " v_d: " << v_d << endl;
+
+        //debug
+        cout << i << "  sensor_fusion, id = " << sensor_fusion[i][0] << " distance = " << dist << " v_s: " << v_s << " v_d: " << v_d << endl;
 
         if((v_s - car_s > 60) || (car_s - v_s > 40) || (v_d < 0)) //remove illegal value, only see s within 60m head or 40m backwards, and d>0
         {
@@ -254,7 +261,7 @@ vector<std::pair<int, double>> nearest_vehicle_sets(double car_s, double car_d, 
 
 
 //only check both adjacent side of ego car.
-vector<std::pair<int, int>> check_side_has_car_or_not(double car_s, double car_d, int lane, vector<vector<double>>& sensor_fusion, vector<std::pair<int, double>>& nearest_cars, bool& hascarflag)
+vector<std::pair<int, int>> check_side_has_car_or_not(double car_s, double car_d, int lane, vector<vector<double>>& sensor_fusion, vector<std::pair<int, double>>& nearest_cars, bool& hascarflag, int prev_size)
 {
     //with car's id and position at left/right flag
     vector<std::pair<int, int>> side_car_vec;
@@ -271,10 +278,15 @@ vector<std::pair<int, int>> check_side_has_car_or_not(double car_s, double car_d
         std::pair<int, int> car_side = std::make_pair(nearest_cars[i].first, -1);
 
         int j = findindexbyID(car_side.first, sensor_fusion);
-
+		
+		double vx = sensor_fusion[j][3];
+		double vy = sensor_fusion[j][4];
+        double check_speed = sqrt(vx*vx + vy*vy);  
         double check_car_s = sensor_fusion[j][5]; // s in frenet
         double check_car_d = sensor_fusion[j][6]; // d in frenet
 
+		check_car_s += prev_size * 0.02 * check_speed;
+		
         //if car in same lane, continue
         if(check_car_d < 4*lane+4 && check_car_d > 4*lane)
         {
@@ -308,15 +320,20 @@ vector<std::pair<int, int>> check_side_has_car_or_not(double car_s, double car_d
 
 }
 
-bool checklanecar(int check_lane, double car_s, vector<vector<double>>& sensor_fusion)
+bool checklanecar(int check_lane, double car_s, vector<vector<double>>& sensor_fusion, int prev_size)
 {
     bool has_car = false;
 
     for(int i = 0; i < sensor_fusion.size(); i++)
     {
+		double vx = sensor_fusion[i][3];
+		double vy = sensor_fusion[i][4];
+        double check_speed = sqrt(vx*vx + vy*vy);  
         double v_s = sensor_fusion[i][5];
         double v_d = sensor_fusion[i][6];
 
+		v_s += prev_size * 0.02 * check_speed;
+		
         if((v_s - car_s > 60) || (car_s - v_s > 40) || (v_d < 0)) //remove illegal value, only see s within 90m head or 40m backwards, and d>0
         {
             continue;
@@ -385,7 +402,7 @@ int lane_change_no_side_car(int lane, double car_s, vector<vector<double>>& sens
     return to_lane;
 }
 
-int lane_change_has_side_car(int lane, double car_s, vector<std::pair<int, int>> side_cars_vec, vector<vector<double>>& sensor_fusion)
+int lane_change_has_side_car(int lane, double car_s, vector<std::pair<int, int>> side_cars_vec, vector<vector<double>>& sensor_fusion, int prev_size)
 {
     int to_lane = lane;
 
@@ -400,8 +417,15 @@ int lane_change_has_side_car(int lane, double car_s, vector<std::pair<int, int>>
         {
             int v_id =  side_cars_vec[i].first;
             int index = findindexbyID(v_id, sensor_fusion);
+			
+			double vx = sensor_fusion[index][3];
+			double vy = sensor_fusion[iindex][4];
+			double check_speed = sqrt(vx*vx + vy*vy);  
+		
             double v_s = sensor_fusion[index][5];
             double v_d = sensor_fusion[index][6];
+			
+			v_s += prev_size * 0.02 * check_speed;
 
             if( ((v_s > car_s) && (v_s - car_s > FRONT_CONSTRAINT))  //front
                     || ((v_s < car_s) && (car_s - v_s > BACK_CONSTRAINT)) //back
@@ -432,9 +456,16 @@ int lane_change_has_side_car(int lane, double car_s, vector<std::pair<int, int>>
         {
             int v_id =  side_cars_vec[0].first;
             int index = findindexbyID(v_id, sensor_fusion);
+			
+			double vx = sensor_fusion[index][3];
+			double vy = sensor_fusion[iindex][4];
+			double check_speed = sqrt(vx*vx + vy*vy);  
+			
             double v_s = sensor_fusion[index][5];
             double v_d = sensor_fusion[index][6];
 
+			v_s += prev_size * 0.02 * check_speed;
+			
             if(side_cars_vec[0].second == LEFT)
             {
                 to_lane = 2; //change lane to right
@@ -476,7 +507,13 @@ int lane_change_has_side_car(int lane, double car_s, vector<std::pair<int, int>>
                     {
                         int v_id =  side_cars_vec[i].first;
                         int index = findindexbyID(v_id, sensor_fusion);
+						double vx = sensor_fusion[index][3];
+						double vy = sensor_fusion[iindex][4];
+						double check_speed = sqrt(vx*vx + vy*vy);  
+			
                         double v_s = sensor_fusion[index][5];
+						
+						v_s += prev_size * 0.02 * check_speed;
 
                         if ((v_s > car_s) && (v_s - car_s > FRONT_CONSTRAINT))  //front
                             || ((v_s < car_s) && (car_s - v_s > BACK_CONSTRAINT)) //back
@@ -500,7 +537,11 @@ int lane_change_has_side_car(int lane, double car_s, vector<std::pair<int, int>>
                     {
                         int v_id =  side_cars_vec[i].first;
                         int index = findindexbyID(v_id, sensor_fusion);
+						double vx = sensor_fusion[index][3];
+						double vy = sensor_fusion[iindex][4];
+						double check_speed = sqrt(vx*vx + vy*vy);  
                         double v_s = sensor_fusion[index][5];
+						v_s += prev_size * 0.02 * check_speed;
 
                         if ((v_s > car_s) && (v_s - car_s > FRONT_CONSTRAINT))  //front
                             || ((v_s < car_s) && (car_s - v_s > BACK_CONSTRAINT)) //back
@@ -526,8 +567,13 @@ int lane_change_has_side_car(int lane, double car_s, vector<std::pair<int, int>>
         {
             int v_id =  side_cars_vec[i].first;
             int index = findindexbyID(v_id, sensor_fusion);
-            double v_s = sensor_fusion[index][5];
+			double vx = sensor_fusion[index][3];
+			double vy = sensor_fusion[iindex][4];
+			double check_speed = sqrt(vx*vx + vy*vy);  
+			double v_s = sensor_fusion[index][5];
             double v_d = sensor_fusion[index][6];
+			
+			v_s += prev_size * 0.02 * check_speed;
 
             if( ((v_s > car_s) && (v_s - car_s > FRONT_CONSTRAINT))  //front
                     || ((v_s < car_s) && (car_s - v_s > BACK_CONSTRAINT)) //back
@@ -635,7 +681,7 @@ int main()
 
                     // Sensor Fusion Data, a list of all other cars on the same side of the road.
                     vector<vector<double>> sensor_fusion = j[1]["sensor_fusion"];
-                    int prev_path_size = previous_path_x.size();
+                    int prev_size = previous_path_x.size();
 
                     if(previous_path_x.size() > 0)
                     {
@@ -647,7 +693,7 @@ int main()
                     bool too_slow = false;
 
                     //find legal nearest cars list, with cars' id and distance, within 60m front and 40 backwards, and d>0
-                    vector<std::pair<int, double>> nearest_cars = nearest_vehicle_sets(car_s, car_d, sensor_fusion);
+                    vector<std::pair<int, double>> nearest_cars = get_nearest_car_list(car_s, car_d, sensor_fusion, prev_size);
 
                     //from nearest car and then far car.
                     //no need to care about all sensor_fusion data, only need to care about cars around ego car, and promote efficiency.
@@ -680,7 +726,7 @@ int main()
                                 //if no, pass car.
                                 bool has_car_flag = false;
                                 //check sideway has car or not, return with side car's id and position relative to ego car. in 25m
-                                vector<std::pair<int, int>> side_cars_vec = check_side_has_car_or_not(car_s, car_d, lane, sensor_fusion, nearest_cars,  has_car_flag);
+                                vector<std::pair<int, int>> side_cars_vec = check_side_has_car_or_not(car_s, car_d, lane, sensor_fusion, nearest_cars,  has_car_flag, prev_size);
 
                                 //debug
                                 for(int i = 0; i<side_cars_vec.size(); i++)
@@ -691,14 +737,14 @@ int main()
 
                                 if (has_car_flag == true)
                                 {
-                                    lane = lane_change_has_side_car(lane, car_s, side_cars_vec, sensor_fusion);
+                                    lane = lane_change_has_side_car(lane, car_s, side_cars_vec, sensor_fusion, prev_size);
                                     break; //reduce velocity
                                 }
                                 else //in safe passing distance, but s distance in (25m, 30m)
                                 {
                                     too_close = false;  // reset flag
 
-                                    lane = lane_change_no_side_car(lane, car_s, sensor_fusion);
+                                    lane = lane_change_no_side_car(lane, car_s, sensor_fusion, prev_size);
 
                                     break;
                                 }
@@ -832,7 +878,7 @@ int main()
                         next_x_vals.push_back(previous_path_x[i]);
                         next_y_vals.push_back(previous_path_y[i]);
                     }
-
+ 
                     //calculate spline x, y, d and number of points.
                     double target_x = 30.0;
                     double target_y = stk(target_x);
