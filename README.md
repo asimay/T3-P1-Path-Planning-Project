@@ -33,49 +33,55 @@ the highway data with drawing as belows:
 
 ![alt text][image2]
 
+Above pic, green point is start point, the blue point is end point of map waypoints.
+
 ### 2. Get nearest car lists around ego car.
 
-In this part, I didn't follow the original `sensor_fusion` code thoughts of project, because actually, we only need to care about the nearest car around ego car, so we just loop between nearest car list, this will also eliminate the invalid sensor fusion data which is actually very far away if you look into the data, and this also promote the handle speed of our program.
+In this part, I didn't follow the original `sensor_fusion` loop code thoughts of project, because actually, we only need to care about the nearest car around ego car, so we just loop between nearest car list, this will also remove the invalid sensor fusion data which is actually very far away if you look into the data, and this also promote the handle speed of our program.
 
-Also, in nearest car list, we only look ahead 60m and 40m backwards, and with all frenet `d` data should be big than 0.
+Also, in nearest car list, we only look ahead 60m and 40m backwards first, and with all frenet `d` data should be big than 0.
 
-Function `get_nearest_car_list()` illustrate the thoughts of step 2. Use the nearest_car_list to speed up the progress speed.
+Function `get_nearest_car_list()` illustrate the thoughts of step 2. 
+
+Use the nearest_car_list to speed up the progress speed.
 
 ### 3. Handle the lane change and behavior planning algothrim.
 
-First, check the car in same lane, this only check the car front or behind ego car, if front/behind cars are in the same lane, and their speed is small than our ego car, this need us to take lane change actions.
+First, check the car in same `d` lane, this only check the car of front or behind ego car, if front/behind cars are in the same lane, and their speed is small than our ego car, this need us to take lane change actions.
 
-Before lane change, we need to check ego car's sides has other car or not. this equivalent to prepare lane change procedure. Before lane change, I used function `check_side_has_car_or_not` to check sideway has car or not, and remember whether left lane or right lane has car, this will help us decide to which way is a better way to do lane change.
+Before lane change, we need to check ego car's both sides has other cars or not. This is equivalent to prepare lane change procedure, as `PLCL` or `PLCR`. Before lane change, I used function `check_side_has_car_or_not()` to check both sideway has car or not, and remember whether left lane or right lane has car, this will help us decide which way is a better way to do lane change afterwards.
 
-Also, I wrote some lane change code, which is different from FSM in udacity course, but the basic core thoughts are same. This can be find in function `lane_change_has_side_car()` and `lane_change_has_side_car()`, actually this is a simple FSM part, which determine the which side to do lane change. In the lane change steps, ego car also check 25m in front and 20m behind of pretended lane, in case of collisions. This part is more robust than demo exercises provided. About safe and fast, there is a balance between them, this is an art to adjust the distance parameters.
+Also, I wrote some lane change code, which is different from FSM in udacity course, but the basic core thoughts are same. This can be find in function `lane_change_has_side_car()` and  function `lane_change_has_side_car()`, actually this is a simple FSM part, which determine the which side to do lane change. In the lane change steps, ego car also check 25m in front and 20m behind of pretended lane, in case of collisions. This part is more robust than demo exercises provided. About safe and fast, there is a balance between them, this is an art to adjust the distance parameters to behave more safe or more fast.
 
-Following is the parameters config, especially for `REF_VEL`, in classroom courses, which is defined to 0.224, but in some cases, if car do lane change continuous twice, this will exceed max jerk, so decrease this value to 0.2 can solve the problem very well.
+Following is the parameters config, especially for `REF_VEL`, in classroom courses, which is defined to 0.224, but in some cases, if ego car do lane change continuous twice, this will exceed max jerk limitation, so decrease this value to 0.2 can solve the problem very well. Also, during lane change step, we only care about distance 20m front or 14m behind of our ego car, this is a safe distance to do lane change despite of there is a car 30m in front of ego car. This method can greatly promote lane change efficience, rather than waiting for behind car to pass. 
 
 ```cpp
 
 #define MAX_VEL (49.7)
-
 #define MIN_VEL (32)
-
 #define REF_VEL (0.2)  //0.224, 0.224 will happened to jerk when change lane continuous.
-
 #define LEFT  (0)
-
 #define RIGHT (1)
-
 #define FRONT_CONSTRAINT (20)
-
 #define BACK_CONSTRAINT (14) //when change lane, d is at least 4m, so actually s is 10m
 
 ```
 
-I also define some states, like `too close` and `too slow` and other velocity limit states, this can help ego car to decrease speed not too much, with these status flags, I can limit the ego car to decrease velocity only to 30-32 mph, if without these condition, the ego car always decelerate to 20 mph, this is too slow for us.
+I also define some states, like `too close` and `too slow` and other velocity limit states, this can help ego car to decrease speed not too much, with these status flags, I can limit the ego car to decrease velocity only to 30-32 mph, if without these condition, the ego car will always decelerate to about 20 mph, this is too slow for ego car.
 
-### 5. Use spline to fit the path.
+some screenshot of code running:
 
-This part is the same as instructions of classroom. use 2 points to compose a path, and use frenet coordinate to or from map x,y coordinate, and then push all the fit points into `ptsx/ptsy`. this step including local transform between map and car coordinate.
+![alt text][image3]
 
-### 6. other specs:
+![alt text][image4]
+
+![alt text][image5]
+
+### 4. Use spline to fit the path.
+
+This part is the same as instructions of classroom. use 2 points to compose a path, and use frenet coordinate transform to or from map x,y coordinate, and then push all the fit points into `ptsx/ptsy`. this step including local transform between map and car coordinate.
+
+### 5. other specs:
 
 Here is the data provided from the Simulator to the C++ Program
 
@@ -118,5 +124,7 @@ The original Frenet to x,y transform is not very accurate, so I used code from e
 
 ## Further to promote
 
-During testing, I find actually when there are many many cars around ego car, and it's still has more space to promote, in real case, it is really hard to do self-driving lane change. Anyway, from this project, I learned a lot more than I expected, I code my own style of lane change code, which is I deem as impossible before, and solved many problems during this project.
+During testing, I find actually when there are many many cars around ego car, and algothrim still has more spaces to promote, I understand that in real case, it is really hard to do self-driving lane change. 
+
+Anyway, from this project, I learned a lot more than I expected, I code my own style of lane change logic, which was I deemed as impossible before, and solved many problems during this project.
 
