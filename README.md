@@ -6,8 +6,9 @@ Self-Driving Car Engineer Nanodegree Program
 [//]: # (Image References)
 [image1]: ./output/final.gif
 [image2]: ./output/trajectory.PNG
-[image3]: ./output/cte_plot_10000.png
-[image4]: ./output/two_value_plot1.png
+[image3]: ./output/1.PNG
+[image4]: ./output/2.PNG
+[image5]: ./output/best.PNG
 
 ### Goals
 In this project your goal is to safely navigate around a virtual highway with other traffic that is driving +-10 MPH of the 50 MPH speed limit. You will be provided the car's localization and sensor fusion data, there is also a sparse map list of waypoints around the highway. The car should try to go as close as possible to the 50 MPH speed limit, which means passing slower traffic when possible, note that other cars will try to change lanes too. The car should avoid hitting other cars at all cost as well as driving inside of the marked road lanes at all times, unless going from one lane to another. The car should be able to make one complete loop around the 6946m highway. Since the car is trying to go 50 MPH, it should take a little over 5 minutes to complete 1 loop. Also the car should not experience total acceleration over 10 m/s^2 and jerk that is greater than 10 m/s^3.
@@ -69,13 +70,26 @@ Following is the parameters config, especially for `REF_VEL`, in classroom cours
 
 I also define some states, like `too close` and `too slow` and other velocity limit states, this can help ego car to decrease speed not too much, with these status flags, I can limit the ego car to decrease velocity only to 30-32 mph, if without these condition, the ego car will always decelerate to about 20 mph, this is too slow for ego car.
 
-some screenshot of code running:
+some screenshots of code running, all is running at the max velocity limitation:
+
+
+this is the first pic of running:
+
 
 ![alt text][image3]
 
+
+the cmd output the sensor fusion data and nearest car list data, and other lane change info.
+
+
 ![alt text][image4]
 
+
+this is the best running result. successfully running 28 miles without incident.
+
+
 ![alt text][image5]
+
 
 ### 4. Use spline to fit the path.
 
