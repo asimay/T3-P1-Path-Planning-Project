@@ -4,7 +4,7 @@ Self-Driving Car Engineer Nanodegree Program
 ----------------
 
 [//]: # (Image References)
-[image1]: ./output/final1.gif
+[image1]: ./output/fianl1.gif
 [image11]: ./output/final2.gif
 [image2]: ./output/trajectory.PNG
 [image3]: ./output/1.PNG
