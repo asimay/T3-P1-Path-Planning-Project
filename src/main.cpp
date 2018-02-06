@@ -13,10 +13,10 @@
 
 #define MAX_VEL (49.7)
 #define MIN_VEL (32)
-#define REF_VEL (0.2)  //0.224, 0.224 will happened to jerk when change lane continuous.
+#define REF_VEL (0.15)  //0.224, 0.224 will happened to jerk when change lane continuous.
 #define LEFT  (0)
 #define RIGHT (1)
-#define FRONT_CONSTRAINT (20)
+#define FRONT_CONSTRAINT (25)
 #define BACK_CONSTRAINT (14) //when change lane, d is at least 4m, so actually s is 10m
 
 using namespace std;
