@@ -4,11 +4,13 @@ Self-Driving Car Engineer Nanodegree Program
 ----------------
 
 [//]: # (Image References)
-[image1]: ./output/final.gif
+[image1]: ./output/final1.gif
+[image11]: ./output/final2.gif
 [image2]: ./output/trajectory.PNG
 [image3]: ./output/1.PNG
 [image4]: ./output/2.PNG
 [image5]: ./output/best.PNG
+[image6]: ./output/trap.PNG
 
 ### Goals
 In this project your goal is to safely navigate around a virtual highway with other traffic that is driving +-10 MPH of the 50 MPH speed limit. You will be provided the car's localization and sensor fusion data, there is also a sparse map list of waypoints around the highway. The car should try to go as close as possible to the 50 MPH speed limit, which means passing slower traffic when possible, note that other cars will try to change lanes too. The car should avoid hitting other cars at all cost as well as driving inside of the marked road lanes at all times, unless going from one lane to another. The car should be able to make one complete loop around the 6946m highway. Since the car is trying to go 50 MPH, it should take a little over 5 minutes to complete 1 loop. Also the car should not experience total acceleration over 10 m/s^2 and jerk that is greater than 10 m/s^3.
@@ -23,6 +25,7 @@ The highway's waypoints loop around so the frenet s value, distance along the ro
 
 ![alt text][image1]
 
+![alt text][image11]
 
 ## Procedure
 
@@ -54,16 +57,16 @@ Before lane change, we need to check ego car's both sides has other cars or not.
 
 Also, I wrote some lane change code, which is different from FSM in udacity course, but the basic core thoughts are same. This can be find in function `lane_change_has_side_car()` and  function `lane_change_has_side_car()`, actually this is a simple FSM part, which determine the which side to do lane change. In the lane change steps, ego car also check 25m in front and 20m behind of pretended lane, in case of collisions. This part is more robust than demo exercises provided. About safe and fast, there is a balance between them, this is an art to adjust the distance parameters to behave more safe or more fast.
 
-Following is the parameters config, especially for `REF_VEL`, in classroom courses, which is defined to 0.224, but in some cases, if ego car do lane change continuous twice, this will exceed max jerk limitation, so decrease this value to 0.2 can solve the problem very well. Also, during lane change step, we only care about distance 20m front or 14m behind of our ego car, this is a safe distance to do lane change despite of there is a car 30m in front of ego car. This method can greatly promote lane change efficience, rather than waiting for behind car to pass. 
+Following is the parameters config, especially for `REF_VEL`, in classroom courses, which is defined to `0.224`, but in some cases, if ego car do lane change continuous twice, this will exceed max jerk limitation, so decrease this value to `0.15` can solve the problem very well. Also, during lane change step, we only care about distance 25m front or 14m behind of our ego car, this is a safe distance to do lane change despite of there is a car 30m in front of ego car. This method can greatly promote lane change efficience, rather than waiting for behind car to pass. 
 
 ```cpp
 
 #define MAX_VEL (49.7)
 #define MIN_VEL (32)
-#define REF_VEL (0.2)  //0.224, 0.224 will happened to jerk when change lane continuous.
+#define REF_VEL (0.15)  //0.224, 0.224 will happened to jerk when change lane continuous.
 #define LEFT  (0)
 #define RIGHT (1)
-#define FRONT_CONSTRAINT (20)
+#define FRONT_CONSTRAINT (25)
 #define BACK_CONSTRAINT (14) //when change lane, d is at least 4m, so actually s is 10m
 
 ```
@@ -134,11 +137,15 @@ Here is the data provided from the Simulator to the C++ Program
 
 ## Tips
 
-The original Frenet to x,y transform is not very accurate, so I used code from ericlavigne, who is live mentor from slack of term 3, his code provide more accuracy of transform, especially when car is at curve turning places.
+The original Frenet to x,y transform is not very accurate, so in some extram cases, the car will on lane line, and not at middle of lane line, especially when car is at curve turning place.
 
 ## Further to promote
 
 During testing, I find actually when there are many many cars around ego car, and algothrim still has more spaces to promote, I understand that in real case, it is really hard to do self-driving lane change. 
+
+for example, in this case, ego car is trapped behind the car, because there are so many cars around ego car, but the front car also doesn't speed up. ego car just waiting for suitable condition to escape the trap.
+
+![alt text][image6]
 
 Anyway, from this project, I learned a lot more than I expected, I code my own style of lane change logic, which was I deemed as impossible before, and solved many problems during this project.
 
