@@ -725,13 +725,13 @@ int main()
                         if( check_car_d < (4*lane+2+2) && check_car_d > 4*lane )
                         {
                             // check front car, <= 30m, and front car's velocity < ego car
-                            if(check_car_s > car_s && (check_car_s - car_s <= 30) && check_speed < min(MAX_VEL, ref_vel))
+                            if(check_car_s > car_s && (check_car_s - car_s <= 30) && check_speed < ref_vel) // min(MAX_VEL, ref_vel))
                             {
                                 too_close = true;
 
-								                //to avoid leading car is too close and too slow 
-								                nearest_front_car_vel = check_speed;
-								                nearest_front_car_s = check_car_s;
+				//to avoid leading car is too close and too slow 
+				nearest_front_car_vel = check_speed;
+				nearest_front_car_s = check_car_s;
 								
                                 //prepare to change lane
                                 //check side-way car, front 25m and back 20m, have car or not, if yes, stop pass, and reduce velocity
