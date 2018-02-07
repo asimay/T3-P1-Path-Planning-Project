@@ -12,12 +12,15 @@
 #include <algorithm>
 
 #define MAX_VEL (49.7)
-#define MIN_VEL (32)
-#define REF_VEL (0.15)  //0.224, 0.224 will happened to jerk when change lane continuous.
+#define MIN_VEL (30)
+#define REF_VEL (0.2)  //0.224, 0.224 will happened to jerk when change lane continuous.
 #define LEFT  (0)
 #define RIGHT (1)
-#define FRONT_CONSTRAINT (25)
-#define BACK_CONSTRAINT (14) //when change lane, d is at least 4m, so actually s is 10m
+#define FRONT_CONSTRAINT (30) //increase the front car distance watched
+#define BACK_CONSTRAINT (14)  //when change lane, d is at least 4m, so actually s is 10m
+#define REAR_VELOCITY_FACTOR  (0.8) //check for the rear vehicle's speed, a rear vehicle traveling fast can catch up with the ego vehicle during a lane change
+#define DANGEOUS_DISTANCE  (10)
+#define QUICK_SLOW_DOWN   (0.4)
 
 using namespace std;
 
@@ -298,8 +301,8 @@ vector<std::pair<int, int>> check_side_has_car_or_not(double car_s, double car_d
         //in other lanes, d is 2.5-5.5m, s within 6m, 6m is a car's length gap //10m
         if( (fabs(car_d - check_car_d) <= 5.5 && fabs(car_d - check_car_d) >= 2.5) &&
                 (((check_car_s - car_s  < FRONT_CONSTRAINT) &&  check_car_s >= car_s) ||    //check front ,in 25m is not safe for passing
-                 (((car_s - check_car_s  < BACK_CONSTRAINT)) && car_s >= check_car_s)       //check behind
-                )   //d < (4*lane+2+2) && d > 4*lane
+                 (((car_s >= check_car_s) && ((car_s - check_car_s  < BACK_CONSTRAINT) || (car_v < REAR_VELOCITY_FACTOR * check_speed))      //check behind, and to avoid rear car too fast to collision with ego car
+                ) 
           )
         {
             hascarflag = true;
@@ -693,7 +696,8 @@ int main()
 
                     bool too_close = false;
                     bool too_slow = false;
-                    double front_car_vel = MIN_VEL;
+                    double nearest_front_car_vel = MIN_VEL;
+					double nearest_front_car_s = 30;
 
                     //find legal nearest cars list, with cars' id and distance, within 60m front and 40 backwards, and d>0
                     vector<std::pair<int, double>> nearest_cars = get_nearest_car_list(car_s, car_d, sensor_fusion, prev_size);
@@ -715,7 +719,6 @@ int main()
                         double check_car_s = sensor_fusion[index][5]; // s in frenet
                         double check_car_d = sensor_fusion[index][6]; // d in frenet
                         check_car_s += previous_path_x.size() * 0.02 * check_speed; //0.02s
-                        front_car_vel = check_speed;
 
                         //when nearest car in same d lane
                         if( check_car_d < (4*lane+2+2) && check_car_d > 4*lane )
@@ -725,6 +728,10 @@ int main()
                             {
                                 too_close = true;
 
+								//to avoid leading car is too close and too slow 
+								nearest_front_car_vel = check_speed;
+								nearest_front_car_s = check_car_s;
+								
                                 //prepare to change lane
                                 //check side-way car, front 25m and back 20m, have car or not, if yes, stop pass, and reduce velocity
                                 //if no, pass car.
@@ -779,16 +786,21 @@ int main()
 
                     if(too_close == true)
                     {
-                        if(ref_vel > MIN_VEL)
-                        {
-                            ref_vel -= REF_VEL; //0.224;
-                        }
+							if( nearest_front_car_vel < ref_vel && nearest_front_car_s > car_s && nearest_front_car_vel - car_s < DANGEOUS_DISTANCE)
+							{
+								ref_vel -= QUICK_SLOW_DOWN; //0.4; Very close and very dangeous
+							}
+							else if(ref_vel > MIN_VEL)
+                        
+							{
+								ref_vel -= REF_VEL; //0.224; normal decrease
+							}
                     }
                     else if(ref_vel < MAX_VEL)
                     {
                         ref_vel += REF_VEL;//0.224;
                     }
-                    //else if(ref_vel - MAX_VEL <= 0.224) // to avoid velocity vibrate
+                    //else if(abs(ref_vel - MAX_VEL <= 0.224)) // to avoid velocity vibrate
                     //{
                     //    ref_vel = MAX_VEL;
                     //}
