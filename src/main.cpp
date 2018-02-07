@@ -1,4 +1,4 @@
-﻿#include <fstream>
+#include <fstream>
 #include <math.h>
 #include <uWS/uWS.h>
 #include <chrono>
@@ -698,7 +698,7 @@ int main()
                     bool too_close = false;
                     bool too_slow = false;
                     double nearest_front_car_vel = MIN_VEL;
-					          double nearest_front_car_s = 30;
+		    double nearest_front_car_s = 30;
 
                     //find legal nearest cars list, with cars' id and distance, within 60m front and 40 backwards, and d>0
                     vector<std::pair<int, double>> nearest_cars = get_nearest_car_list(car_s, car_d, sensor_fusion, prev_size);
@@ -791,8 +791,7 @@ int main()
                         {
                             ref_vel -= QUICK_SLOW_DOWN; //0.4; Very close and very dangeous
                         }
-                        else if(ref_vel > MIN_VEL)
-                                  
+                        else if(ref_vel > MIN_VEL)  
                         {
                             ref_vel -= REF_VEL; //0.224; normal decrease
                         }
